@@ -41,7 +41,7 @@ jobs:
             const ext=dims.L-4.50;
             const bounds=window.afBaseBounds||new THREE.Box3().setFromObject(car);
             const zMin=bounds.min.z,zMax=bounds.max.z,span=Math.max(.001,zMax-zMin);
-            const frontKeep=.30, rearKeep=.30;
+            const frontKeep=.30,rearKeep=.30;
             const a=zMin+span*rearKeep;
             const b=zMax-span*frontKeep;
             const centerSpan=Math.max(.001,b-a);
@@ -100,7 +100,7 @@ jobs:
           s=s.replace('value="4.78"','value="4.50"').replace('4.78 m','4.50 m')
           s=s.replace('value="1.88"','value="2.02"').replace('1.88 m','2.02 m')
           s=s.replace('value="1.32"','value="1.33"').replace('1.32 m','1.33 m')
-          s=s.replace("window.resetDims=()=>{dims={...BASE};", "window.resetDims=()=>{dims={...BASE};window.afBaseBounds&&car&&fit(car);")
+          s=s.replace('fit(car);saveRecords();applyAll();','fit(car);saveRecords();')
           p.write_text(s)
           PY
       - name: Upload artifact
