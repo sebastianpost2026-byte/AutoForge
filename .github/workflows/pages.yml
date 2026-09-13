@@ -23,84 +23,26 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Build center-only parametric deformation
+      - name: Preserve original Mustang proportions
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text()
-          s=s.replace("const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.localClippingEnabled=true;", "const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});")
           start=s.index('function fit(o){')
           end=s.index('function loadModel', start)
-          newfit=r'''function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3()),scale=4.5/Math.max(s.x,s.y,s.z);o.position.sub(c);o.scale.multiplyScalar(scale);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y*scale*.5;controls.target.set(0,0.58,0);camera.fov=40;camera.position.set(0,0.88,6.2);camera.updateProjectionMatrix();controls.update()}'''
+          newfit=r'''function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3());o.position.sub(c);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y/2;controls.target.set(0,0.58,0);camera.fov=40;const d=Math.max(5.6,s.z*1.35);camera.position.set(0,s.y*0.32,d);camera.updateProjectionMatrix();controls.update()}'''
           s=s[:start]+newfit+s[end:]
-          start=s.index('function deform(){')
-          end=s.index('function applyAll', start)
-          newdeform=r'''function deform(){
-            if(!car)return;
-            const ext=dims.L-4.50;
-            const bounds=window.afBaseBounds||new THREE.Box3().setFromObject(car);
-            const zMin=bounds.min.z,zMax=bounds.max.z,span=Math.max(.001,zMax-zMin);
-            const frontKeep=.30,rearKeep=.30;
-            const a=zMin+span*rearKeep;
-            const b=zMax-span*frontKeep;
-            const centerSpan=Math.max(.001,b-a);
-            const shift=ext/2;
-            const mapZ=z=>{
-              if(ext===0)return z;
-              if(z<=a)return z-shift;
-              if(z>=b)return z+shift;
-              return a-shift+(z-a)*(1+ext/centerSpan);
-            };
-            const rigidShift=z=>{
-              if(ext===0)return 0;
-              if(z<=a)return -shift;
-              if(z>=b)return shift;
-              return -shift+(z-a)/centerSpan*ext;
-            };
-            for(const r of records){
-              const o=r.o;
-              o.geometry=r.geo.clone();
-              const n=r.name;
-              const isInt=isInterior(n);
-              const pos=o.geometry.attributes.position;
-              const arr=pos.array;
-              const inv=new THREE.Matrix4().copy(o.matrixWorld).invert();
-              const p=new THREE.Vector3();
-              if(isInt){
-                const box=new THREE.Box3().setFromObject(o);
-                const cz=(box.min.z+box.max.z)/2;
-                o.position.copy(r.pos);
-                const delta=rigidShift(cz);
-                o.position.z+=delta;
-                continue;
-              }
-              for(let i=0;i<arr.length;i+=3){
-                p.set(arr[i],arr[i+1],arr[i+2]).applyMatrix4(o.matrixWorld);
-                p.z=mapZ(p.z);
-                p.x*=dims.W/2.02;
-                p.y*=dims.H/1.33;
-                p.applyMatrix4(inv);
-                arr[i]=p.x;arr[i+1]=p.y;arr[i+2]=p.z;
-              }
-              pos.needsUpdate=true;
-              o.geometry.computeVertexNormals();
-              o.geometry.computeBoundingBox();
-              o.geometry.computeBoundingSphere();
-            }
-            for(const [o,b0] of wheelBase){
-              o.position.copy(b0.p);
-              o.scale.copy(b0.s);
-              o.position.z=mapZ(b0.p.z);
-            }
-            car.updateMatrixWorld(true);
-          }'''
-          s=s[:start]+newdeform+s[end:]
-          s=s.replace("const BASE={L:4.78,W:1.88,H:1.32}","const BASE={L:4.50,W:2.02,H:1.33}")
-          s=s.replace('value="4.78"','value="4.50"').replace('4.78 m','4.50 m')
-          s=s.replace('value="1.88"','value="2.02"').replace('1.88 m','2.02 m')
-          s=s.replace('value="1.32"','value="1.33"').replace('1.32 m','1.33 m')
+          # Do not deform the car during initial load. Editing only happens after a workshop control changes.
           s=s.replace('fit(car);saveRecords();applyAll();','fit(car);saveRecords();')
+          s=s.replace("const BASE={L:4.50,W:2.02,H:1.33}","const BASE={L:4.31,W:1.93,H:1.27}")
+          s=s.replace('value="4.50"','value="4.31"').replace('4.50 m','4.31 m')
+          s=s.replace('value="2.02"','value="1.93"').replace('2.02 m','1.93 m')
+          s=s.replace('value="1.33"','value="1.27"').replace('1.33 m','1.27 m')
+          # Make deformation relative to the actual model base dimensions instead of the old hard-coded values.
+          s=s.replace('const ext=dims.L-4.50;','const ext=dims.L-BASE.L;')
+          s=s.replace("p.x*=dims.W/2.02;","p.x*=dims.W/BASE.W;")
+          s=s.replace("p.y*=dims.H/1.33;","p.y*=dims.H/BASE.H;")
           p.write_text(s)
           PY
       - name: Upload artifact
