@@ -19,158 +19,94 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Build structural 3D vehicle deformation
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Build center-only parametric deformation
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
-          p = Path('index.html')
-          s = p.read_text()
-
-          # Restore accurate Mustang dimensions for the default model.
-          s = s.replace("const BASE={L:4.78,W:1.88,H:1.32}", "const BASE={L:4.31,W:1.93,H:1.27}")
-          s = s.replace('value="4.78"', 'value="4.31"').replace('4.78 m', '4.31 m')
-          s = s.replace('value="1.88"', 'value="1.93"').replace('1.88 m', '1.93 m')
-          s = s.replace('value="1.32"', 'value="1.27"').replace('1.32 m', '1.27 m')
-
-          # Remove earlier structural helper if present.
-          if "function splitLongitudinalMeshes(meshRoot){" in s:
-              a=s.index("function splitLongitudinalMeshes(meshRoot){")
-              b=s.index("function loadModel",a)
-              s=s[:a]+s[b:]
-
-          fit_start=s.index("function fit(o){")
-          fit_end=s.index("function loadModel",fit_start)
-          new_fit = r'''function fit(o){
-            const b=new THREE.Box3().setFromObject(o);
-            const size=b.getSize(new THREE.Vector3());
-            const c=b.getCenter(new THREE.Vector3());
-            const scale=4.5/Math.max(size.x,size.y,size.z);
-            o.position.sub(c);
-            o.scale.multiplyScalar(scale);
-            floor.position.y=-size.y*scale*.5;
-            controls.target.set(0,0.45,0);
-            camera.fov=37;
-            camera.position.set(4.4,2.0,5.0);
-            camera.updateProjectionMatrix();
-            controls.update();
-          }
-          function makeSplitGeometry(src, triStarts){
-            const g=src.index ? src.toNonIndexed() : src.clone();
-            const out=new THREE.BufferGeometry();
-            for(const name of Object.keys(g.attributes)){
-              const a=g.getAttribute(name);
-              const vals=[];
-              for(const start of triStarts){
-                for(const idx of [start,start+1,start+2]){
-                  for(let c=0;c<a.itemSize;c++) vals.push(a.array[idx*a.itemSize+c]);
-                }
-              }
-              out.setAttribute(name,new THREE.Float32BufferAttribute(vals,a.itemSize,a.normalized));
-            }
-            return out;
-          }
-          function splitLongitudinalMeshes(meshRoot){
-            const rootBox=new THREE.Box3().setFromObject(meshRoot);
-            const center=(rootBox.min.z+rootBox.max.z)/2;
-            const half=(rootBox.max.z-rootBox.min.z)*0.15;
-            const meshes=[];
-            meshRoot.traverse(o=>{
-              if(!o.isMesh)return;
-              const n=(o.name+' '+(o.material?.name||'')).toLowerCase();
-              if(isWheel(n))return;
-              meshes.push(o);
-            });
-            for(const mesh of meshes){
-              const src=mesh.geometry;
-              const g=src.index ? src.toNonIndexed() : src.clone();
-              const pos=g.getAttribute('position');
-              if(!pos || pos.count<3)continue;
-              const groups=[[],[],[]];
-              for(let i=0;i+2<pos.count;i+=3){
-                const p0=new THREE.Vector3().fromBufferAttribute(pos,i).applyMatrix4(mesh.matrixWorld);
-                const p1=new THREE.Vector3().fromBufferAttribute(pos,i+1).applyMatrix4(mesh.matrixWorld);
-                const p2=new THREE.Vector3().fromBufferAttribute(pos,i+2).applyMatrix4(mesh.matrixWorld);
-                const z=(p0.z+p1.z+p2.z)/3;
-                const zone=z>center+half?0:(z<center-half?2:1);
-                groups[zone].push(i);
-              }
-              const parent=mesh.parent;
-              let made=false;
-              for(let zone=0;zone<3;zone++){
-                if(!groups[zone].length)continue;
-                const part=new THREE.Mesh(makeSplitGeometry(src,groups[zone]),mesh.material);
-                part.name=mesh.name+'__afZone'+zone;
-                part.position.copy(mesh.position);
-                part.rotation.copy(mesh.rotation);
-                part.scale.copy(mesh.scale);
-                part.castShadow=mesh.castShadow;
-                part.receiveShadow=mesh.receiveShadow;
-                part.userData.afZone=zone;
-                parent.add(part);
-                made=true;
-              }
-              if(made)parent.remove(mesh);
-            }
-            window.afSplit={centerHalf:half,center:center};
-          }
-          '''
-          s=s[:fit_start]+new_fit+s[fit_end:]
-
-          s=s.replace("car=g.scene;scene.add(car);bodyM=[];",
-                      "car=g.scene;scene.add(car);car.updateMatrixWorld(true);splitLongitudinalMeshes(car);bodyM=[];")
-
-          deform_start=s.index("function deform(){")
-          deform_end=s.index("function applyAll",deform_start)
-          new_deform = r'''function deform(){
-            if(!car || !window.afSplit)return;
-            const ext=dims.L-BASE.L;
-            const widthFactor=dims.W/BASE.W;
-            const heightFactor=dims.H/BASE.H;
-            const scaleZ=car.scale.z||1;
-            const shiftWorld=(ext/2)*scaleZ;
-            const centerFactor=1+ext/(2*window.afSplit.centerHalf);
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace("const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.localClippingEnabled=true;", "const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});")
+          start=s.index('function fit(o){')
+          end=s.index('function loadModel', start)
+          newfit=r'''function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3()),scale=4.5/Math.max(s.x,s.y,s.z);o.position.sub(c);o.scale.multiplyScalar(scale);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y*scale*.5;controls.target.set(0,0.58,0);camera.fov=40;camera.position.set(0,0.88,6.2);camera.updateProjectionMatrix();controls.update()}'''
+          s=s[:start]+newfit+s[end:]
+          start=s.index('function deform(){')
+          end=s.index('function applyAll', start)
+          newdeform=r'''function deform(){
+            if(!car)return;
+            const ext=dims.L-4.50;
+            const bounds=window.afBaseBounds||new THREE.Box3().setFromObject(car);
+            const zMin=bounds.min.z,zMax=bounds.max.z,span=Math.max(.001,zMax-zMin);
+            const frontKeep=.30, rearKeep=.30;
+            const a=zMin+span*rearKeep;
+            const b=zMax-span*frontKeep;
+            const centerSpan=Math.max(.001,b-a);
+            const shift=ext/2;
+            const mapZ=z=>{
+              if(ext===0)return z;
+              if(z<=a)return z-shift;
+              if(z>=b)return z+shift;
+              return a-shift+(z-a)*(1+ext/centerSpan);
+            };
+            const rigidShift=z=>{
+              if(ext===0)return 0;
+              if(z<=a)return -shift;
+              if(z>=b)return shift;
+              return -shift+(z-a)/centerSpan*ext;
+            };
             for(const r of records){
-              const o=r.o, base=r.geo, src=base.getAttribute('position');
-              o.geometry=base.clone();
-              const dst=o.geometry.getAttribute('position');
+              const o=r.o;
+              o.geometry=r.geo.clone();
+              const n=r.name;
+              const isInt=isInterior(n);
+              const pos=o.geometry.attributes.position;
+              const arr=pos.array;
               const inv=new THREE.Matrix4().copy(o.matrixWorld).invert();
               const p=new THREE.Vector3();
-              const zone=o.userData.afZone ?? 1;
-              for(let i=0;i<src.count;i++){
-                p.fromBufferAttribute(src,i).applyMatrix4(o.matrixWorld);
-                if(zone===0)p.z+=shiftWorld;
-                else if(zone===2)p.z-=shiftWorld;
-                else p.z=window.afSplit.center+(p.z-window.afSplit.center)*centerFactor;
-                p.x*=widthFactor;
-                p.y*=heightFactor;
-                p.applyMatrix4(inv);
-                dst.setXYZ(i,p.x,p.y,p.z);
+              if(isInt){
+                const box=new THREE.Box3().setFromObject(o);
+                const cz=(box.min.z+box.max.z)/2;
+                o.position.copy(r.pos);
+                const delta=rigidShift(cz);
+                o.position.z+=delta;
+                continue;
               }
-              dst.needsUpdate=true;
+              for(let i=0;i<arr.length;i+=3){
+                p.set(arr[i],arr[i+1],arr[i+2]).applyMatrix4(o.matrixWorld);
+                p.z=mapZ(p.z);
+                p.x*=dims.W/2.02;
+                p.y*=dims.H/1.33;
+                p.applyMatrix4(inv);
+                arr[i]=p.x;arr[i+1]=p.y;arr[i+2]=p.z;
+              }
+              pos.needsUpdate=true;
               o.geometry.computeVertexNormals();
               o.geometry.computeBoundingBox();
               o.geometry.computeBoundingSphere();
             }
-            for(const [o,b] of wheelBase){
-              o.position.copy(b.p);
-              o.scale.copy(b.s);
-              if(Math.abs(ext)>1e-6)o.position.z=b.p.z>0?b.p.z+shiftWorld:b.p.z-shiftWorld;
+            for(const [o,b0] of wheelBase){
+              o.position.copy(b0.p);
+              o.scale.copy(b0.s);
+              o.position.z=mapZ(b0.p.z);
             }
             car.updateMatrixWorld(true);
-          }
-          '''
-          s=s[:deform_start]+new_deform+s[deform_end:]
-
+          }'''
+          s=s[:start]+newdeform+s[end:]
+          s=s.replace("const BASE={L:4.78,W:1.88,H:1.32}","const BASE={L:4.50,W:2.02,H:1.33}")
+          s=s.replace('value="4.78"','value="4.50"').replace('4.78 m','4.50 m')
+          s=s.replace('value="1.88"','value="2.02"').replace('1.88 m','2.02 m')
+          s=s.replace('value="1.32"','value="1.33"').replace('1.32 m','1.33 m')
+          s=s.replace("window.resetDims=()=>{dims={...BASE};", "window.resetDims=()=>{dims={...BASE};window.afBaseBounds&&car&&fit(car);")
           p.write_text(s)
           PY
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
-
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
