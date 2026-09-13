@@ -23,24 +23,15 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Normalize Mustang to correct real proportions
+      - name: Improve interior camera
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text()
-          start=s.index('function loadModel(){')
-          end=s.index('loadModel();', start)
-          block=s[start:end]
-          old="car=g.scene;scene.add(car);const rawBox=new THREE.Box3().setFromObject(car);const rawSize=rawBox.getSize(new THREE.Vector3());if(rawSize.x>0)car.scale.x*=BASE.W/rawSize.x;"
-          new="car=g.scene;scene.add(car);const rawBox=new THREE.Box3().setFromObject(car);const rawSize=rawBox.getSize(new THREE.Vector3());if(rawSize.x>0)car.scale.x*=BASE.L/rawSize.x;if(rawSize.y>0)car.scale.y*=BASE.H/rawSize.y;if(rawSize.z>0)car.scale.z*=BASE.W/rawSize.z;"
-          block=block.replace(old,new)
-          s=s[:start]+block+s[end:]
-          s=s.replace("const BASE={L:4.31,W:1.88,H:1.27}","const BASE={L:4.31,W:1.88,H:1.27}")
-          # Keep the initial workshop values synchronized with the normalized model.
-          s=s.replace('value="1.93"','value="1.88"').replace('1.93 m','1.88 m')
-          s=s.replace('value="4.50"','value="4.31"').replace('4.50 m','4.31 m')
-          s=s.replace('value="1.33"','value="1.27"').replace('1.33 m','1.27 m')
+          old="window.cam=t=>{const b=new THREE.Box3().setFromObject(car),c=b.getCenter(new THREE.Vector3()),z=b.getSize(new THREE.Vector3());if(t==='front')camera.position.set(0,c.y,z.z*1.4);if(t==='rear')camera.position.set(0,c.y,-z.z*1.4);if(t==='side')camera.position.set(z.x*1.5,c.y,0);if(t==='top')camera.position.set(0,c.y+z.y*2,0);if(t==='inside')camera.position.set(0,c.y+0.35,0.2);controls.target.copy(c);controls.update()};"
+          new="window.cam=t=>{if(!car)return;const b=new THREE.Box3().setFromObject(car),c=b.getCenter(new THREE.Vector3()),z=b.getSize(new THREE.Vector3());if(t==='front'){camera.position.set(c.x,c.y,z.z*1.45);controls.target.set(c.x,c.y,c.z)}if(t==='rear'){camera.position.set(c.x,c.y,-z.z*1.45);controls.target.set(c.x,c.y,c.z)}if(t==='side'){camera.position.set(z.x*1.55,c.y,c.z);controls.target.copy(c)}if(t==='top'){camera.position.set(c.x,c.y+z.y*2.2,c.z);controls.target.copy(c)}if(t==='inside'){const h=c.y+0.48;camera.position.set(c.x,h,c.z+0.10);controls.target.set(c.x,h-0.04,c.z-1.15);controls.minDistance=.08;controls.maxDistance=8;controls.enablePan=true;controls.update()}else{controls.minDistance=.5;controls.maxDistance=40;controls.enablePan=false;controls.update()}};"
+          s=s.replace(old,new)
           p.write_text(s)
           PY
       - name: Upload artifact
