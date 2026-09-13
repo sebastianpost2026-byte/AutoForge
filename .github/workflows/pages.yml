@@ -23,16 +23,25 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Improve interior camera
+      - name: Fix interior camera axis and cockpit position
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p=Path('index.html')
           s=p.read_text()
-          old="window.cam=t=>{const b=new THREE.Box3().setFromObject(car),c=b.getCenter(new THREE.Vector3()),z=b.getSize(new THREE.Vector3());if(t==='front')camera.position.set(0,c.y,z.z*1.4);if(t==='rear')camera.position.set(0,c.y,-z.z*1.4);if(t==='side')camera.position.set(z.x*1.5,c.y,0);if(t==='top')camera.position.set(0,c.y+z.y*2,0);if(t==='inside')camera.position.set(0,c.y+0.35,0.2);controls.target.copy(c);controls.update()};"
-          new="window.cam=t=>{if(!car)return;const b=new THREE.Box3().setFromObject(car),c=b.getCenter(new THREE.Vector3()),z=b.getSize(new THREE.Vector3());if(t==='front'){camera.position.set(c.x,c.y,z.z*1.45);controls.target.set(c.x,c.y,c.z)}if(t==='rear'){camera.position.set(c.x,c.y,-z.z*1.45);controls.target.set(c.x,c.y,c.z)}if(t==='side'){camera.position.set(z.x*1.55,c.y,c.z);controls.target.copy(c)}if(t==='top'){camera.position.set(c.x,c.y+z.y*2.2,c.z);controls.target.copy(c)}if(t==='inside'){const h=c.y+0.05;camera.position.set(c.x,h,c.z-0.60);controls.target.set(c.x,h+0.02,c.z+1.35);controls.minDistance=.08;controls.maxDistance=8;controls.enablePan=true;controls.update()}else{controls.minDistance=.5;controls.maxDistance=40;controls.enablePan=false;controls.update()}};"
-          s=s.replace(old,new)
-          p.write_text(s)
+          new_cam="""window.cam=v=>{if(!car)return;const b=new THREE.Box3().setFromObject(car),c=b.getCenter(new THREE.Vector3()),z=b.getSize(new THREE.Vector3());const cab=new THREE.Box3();car.traverse(o=>{if(o.isMesh){const n=(o.name+' '+(o.material?.name||'')).toLowerCase();if(isInterior(n))cab.expandByObject(o)}});const ic=cab.isEmpty()?c:cab.getCenter(new THREE.Vector3()),iz=cab.isEmpty()?z:cab.getSize(new THREE.Vector3());if(v==='front'){camera.position.set(b.max.x+z.x*0.75,c.y+z.y*0.25,c.z);controls.target.set(b.min.x,c.y,c.z)}if(v==='rear'){camera.position.set(b.min.x-z.x*0.75,c.y+z.y*0.25,c.z);controls.target.set(b.max.x,c.y,c.z)}if(v==='side'){camera.position.set(c.x,c.y+z.y*0.2,b.max.z+z.z*1.2);controls.target.copy(c)}if(v==='top'){camera.position.set(c.x,c.y+z.y*1.9,c.z);controls.target.copy(c)}if(v==='inside'){const frontSign=b.max.x>=c.x?1:-1;const seatX=ic.x-frontSign*Math.min(0.12,iz.x*0.08);const eyeY=ic.y+Math.max(0.22,iz.y*0.42);const lookX=seatX+frontSign*Math.max(0.9,iz.x*0.75);camera.position.set(seatX,eyeY,ic.z);camera.lookAt(new THREE.Vector3(lookX,eyeY-0.05,ic.z));controls.target.set(lookX,eyeY-0.05,ic.z);controls.minDistance=.05;controls.maxDistance=5;controls.enablePan=true;controls.update()}else{controls.minDistance=.5;controls.maxDistance=40;controls.enablePan=false;controls.update()}};"""
+          pattern=r"window\.cam=[^;]+;window\.rotate="
+          repl=new_cam+"window.rotate="
+          s2,n=re.subn(pattern,repl,s,count=1)
+          if n!=1:
+              start=s.find('window.cam=')
+              end=s.find('window.rotate=', start)
+              if start!=-1 and end!=-1:
+                  s2=s[:start]+new_cam+s[end:]
+              else:
+                  raise SystemExit('camera function not found')
+          p.write_text(s2)
           PY
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
