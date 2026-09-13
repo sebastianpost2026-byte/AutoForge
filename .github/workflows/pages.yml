@@ -23,17 +23,6 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Add Workshop module
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('index.html')
-          s=p.read_text()
-          s=s.replace('fit(car);state.innerHTML=', 'fit(car);window.afBase={x:car.scale.x,y:car.scale.y,z:car.scale.z};state.innerHTML=')
-          listener="window.addEventListener('af:scale',e=>{if(!car||!window.afBase)return;const d=e.detail;const sx=d.w/1.82,sy=d.h/1.41,sz=d.l/4.78;car.scale.x=window.afBase.x*sx;car.scale.y=window.afBase.y*sy;car.scale.z=window.afBase.z*sz;state.innerHTML='🛠️ <b>Diseño modificado</b><br><small>'+d.l.toFixed(2)+' m × '+d.w.toFixed(2)+' m × '+d.h.toFixed(2)+' m</small>';});"
-          s=s.replace('</script></body></html>',listener+'</script><script src="./workshop.js"></script></body></html>')
-          p.write_text(s)
-          PY
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
