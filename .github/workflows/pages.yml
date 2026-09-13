@@ -23,26 +23,20 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Preserve original Mustang proportions
+      - name: Correct initial Mustang width
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text()
-          start=s.index('function fit(o){')
-          end=s.index('function loadModel', start)
-          newfit=r'''function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3());o.position.sub(c);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y/2;controls.target.set(0,0.58,0);camera.fov=40;const d=Math.max(5.6,s.z*1.35);camera.position.set(0,s.y*0.32,d);camera.updateProjectionMatrix();controls.update()}'''
-          s=s[:start]+newfit+s[end:]
-          # Do not deform the car during initial load. Editing only happens after a workshop control changes.
-          s=s.replace('fit(car);saveRecords();applyAll();','fit(car);saveRecords();')
-          s=s.replace("const BASE={L:4.50,W:2.02,H:1.33}","const BASE={L:4.31,W:1.93,H:1.27}")
-          s=s.replace('value="4.50"','value="4.31"').replace('4.50 m','4.31 m')
-          s=s.replace('value="2.02"','value="1.93"').replace('2.02 m','1.93 m')
-          s=s.replace('value="1.33"','value="1.27"').replace('1.33 m','1.27 m')
-          # Make deformation relative to the actual model base dimensions instead of the old hard-coded values.
-          s=s.replace('const ext=dims.L-4.50;','const ext=dims.L-BASE.L;')
-          s=s.replace("p.x*=dims.W/2.02;","p.x*=dims.W/BASE.W;")
-          s=s.replace("p.y*=dims.H/1.33;","p.y*=dims.H/BASE.H;")
+          start=s.index('function loadModel(){')
+          end=s.index('loadModel();', start)
+          block=s[start:end]
+          block=block.replace("car=g.scene;scene.add(car);", "car=g.scene;scene.add(car);const rawBox=new THREE.Box3().setFromObject(car);const rawSize=rawBox.getSize(new THREE.Vector3());if(rawSize.x>0)car.scale.x*=BASE.W/rawSize.x;")
+          s=s[:start]+block+s[end:]
+          s=s.replace("const BASE={L:4.31,W:1.93,H:1.27}","const BASE={L:4.31,W:1.88,H:1.27}")
+          s=s.replace('value="1.93"','value="1.88"').replace('1.93 m','1.88 m')
+          s=s.replace("function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3());o.position.sub(c);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y/2;controls.target.set(0,0.58,0);camera.fov=40;const d=Math.max(5.6,s.z*1.35);camera.position.set(0,s.y*0.32,d);camera.updateProjectionMatrix();controls.update()}","function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3());o.position.sub(c);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y/2;controls.target.set(0,0.54,0);camera.fov=40;const d=Math.max(5.8,s.z*1.38);camera.position.set(0,s.y*0.30,d);camera.updateProjectionMatrix();controls.update()}")
           p.write_text(s)
           PY
       - name: Upload artifact
