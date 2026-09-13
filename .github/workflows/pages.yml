@@ -23,7 +23,7 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Correct initial Mustang width
+      - name: Normalize Mustang to correct real proportions
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -32,11 +32,15 @@ jobs:
           start=s.index('function loadModel(){')
           end=s.index('loadModel();', start)
           block=s[start:end]
-          block=block.replace("car=g.scene;scene.add(car);", "car=g.scene;scene.add(car);const rawBox=new THREE.Box3().setFromObject(car);const rawSize=rawBox.getSize(new THREE.Vector3());if(rawSize.x>0)car.scale.x*=BASE.W/rawSize.x;")
+          old="car=g.scene;scene.add(car);const rawBox=new THREE.Box3().setFromObject(car);const rawSize=rawBox.getSize(new THREE.Vector3());if(rawSize.x>0)car.scale.x*=BASE.W/rawSize.x;"
+          new="car=g.scene;scene.add(car);const rawBox=new THREE.Box3().setFromObject(car);const rawSize=rawBox.getSize(new THREE.Vector3());if(rawSize.x>0)car.scale.x*=BASE.L/rawSize.x;if(rawSize.y>0)car.scale.y*=BASE.H/rawSize.y;if(rawSize.z>0)car.scale.z*=BASE.W/rawSize.z;"
+          block=block.replace(old,new)
           s=s[:start]+block+s[end:]
-          s=s.replace("const BASE={L:4.31,W:1.93,H:1.27}","const BASE={L:4.31,W:1.88,H:1.27}")
+          s=s.replace("const BASE={L:4.31,W:1.88,H:1.27}","const BASE={L:4.31,W:1.88,H:1.27}")
+          # Keep the initial workshop values synchronized with the normalized model.
           s=s.replace('value="1.93"','value="1.88"').replace('1.93 m','1.88 m')
-          s=s.replace("function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3());o.position.sub(c);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y/2;controls.target.set(0,0.58,0);camera.fov=40;const d=Math.max(5.6,s.z*1.35);camera.position.set(0,s.y*0.32,d);camera.updateProjectionMatrix();controls.update()}","function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3());o.position.sub(c);window.afBaseBounds=new THREE.Box3().setFromObject(o);floor.position.y=-s.y/2;controls.target.set(0,0.54,0);camera.fov=40;const d=Math.max(5.8,s.z*1.38);camera.position.set(0,s.y*0.30,d);camera.updateProjectionMatrix();controls.update()}")
+          s=s.replace('value="4.50"','value="4.31"').replace('4.50 m','4.31 m')
+          s=s.replace('value="1.33"','value="1.27"').replace('1.33 m','1.27 m')
           p.write_text(s)
           PY
       - name: Upload artifact
