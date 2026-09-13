@@ -27,9 +27,15 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p=Path('index.html')
           s=p.read_text()
-          s=s.replace('car.updateMatrixWorld(true);fit(car)}function applyAll', 'car.updateMatrixWorld(true)}function applyAll')
+          start=s.index('function deform(){')
+          end=s.index('function applyAll', start)
+          new=r'''function deform(){if(!car)return;const wf=dims.W/2.02,hf=dims.H/1.33,ext=dims.L-4.50,half=.62;car.updateMatrixWorld(true);for(const r of records){const o=r.o;o.geometry=r.geo.clone();const a=o.geometry.attributes.position,arr=a.array,inv=new THREE.Matrix4().copy(o.matrixWorld).invert(),p=new THREE.Vector3();for(let i=0;i<arr.length;i+=3){p.set(arr[i],arr[i+1],arr[i+2]).applyMatrix4(o.matrixWorld);const z=p.z;let shift=0;if(ext!==0){const az=Math.abs(z);if(az>=half)shift=Math.sign(z)*ext/2;else shift=(z/half)*(ext/2)}p.z+=shift;p.x*=wf;p.y*=hf;p.applyMatrix4(inv);arr[i]=p.x;arr[i+1]=p.y;arr[i+2]=p.z}a.needsUpdate=true;a.computeBoundingBox();a.computeBoundingSphere();if(a.normal) a.normal.needsUpdate=true;if(a.attributes&&a.attributes.normal){o.geometry.computeVertexNormals()}}for(const [o,b] of wheelBase){o.position.copy(b.p);o.scale.copy(b.s);o.position.x*=wf}car.updateMatrixWorld(true)}'''
+          s=s[:start]+new+s[end:]
+          s=s.replace("const BASE={L:4.78,W:1.88,H:1.32}","const BASE={L:4.50,W:2.02,H:1.33}")
+          s=s.replace('value="4.78"','value="4.50"').replace('4.78 m','4.50 m').replace('value="1.88"','value="2.02"').replace('1.88 m','2.02 m').replace('value="1.32"','value="1.33"').replace('1.32 m','1.33 m')
           p.write_text(s)
           PY
       - name: Upload artifact
