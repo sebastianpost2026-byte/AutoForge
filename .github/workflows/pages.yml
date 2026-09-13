@@ -23,6 +23,15 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Fix parametric deformation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('car.updateMatrixWorld(true);fit(car)}function applyAll', 'car.updateMatrixWorld(true)}function applyAll')
+          p.write_text(s)
+          PY
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
