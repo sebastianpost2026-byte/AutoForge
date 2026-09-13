@@ -23,62 +23,75 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Fix parametric deformation
+      - name: Install structural 3D deformation
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p=Path('index.html')
           s=p.read_text()
+          s=s.replace("const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});", "const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.localClippingEnabled=true;")
+          start=s.index('function fit(o){')
+          end=s.index('function loadModel', start)
+          newfit=r'''function fit(o){const b=new THREE.Box3().setFromObject(o),s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3()),scale=4.5/Math.max(s.x,s.y,s.z);o.position.sub(c);o.scale.multiplyScalar(scale);floor.position.y=-s.y*scale*.5;controls.target.set(0,0.58,0);camera.fov=39;camera.position.set(0,1.12,5.85);camera.updateProjectionMatrix();controls.update()}'''
+          s=s[:start]+newfit+s[end:]
           start=s.index('function deform(){')
           end=s.index('function applyAll', start)
-          new=r'''function deform(){
+          newdeform=r'''function deform(){
             if(!car)return;
-            const wf=dims.W/2.02;
-            const hf=dims.H/1.33;
             const ext=dims.L-4.50;
-            const centerHalf=0.68;
-            car.updateMatrixWorld(true);
-            for(const r of records){
-              const o=r.o;
-              o.geometry=r.geo.clone();
-              const pos=o.geometry.attributes.position;
-              const arr=pos.array;
-              const inv=new THREE.Matrix4().copy(o.matrixWorld).invert();
-              const p=new THREE.Vector3();
-              for(let i=0;i<arr.length;i+=3){
-                p.set(arr[i],arr[i+1],arr[i+2]).applyMatrix4(o.matrixWorld);
-                let z=p.z;
-                if(ext!==0){
-                  if(z>centerHalf) z+=ext/2;
-                  else if(z<-centerHalf) z-=ext/2;
-                  else z*=1+(ext/(2*centerHalf));
-                }
-                p.z=z;
-                p.x*=wf;
-                p.y*=hf;
-                p.applyMatrix4(inv);
-                arr[i]=p.x; arr[i+1]=p.y; arr[i+2]=p.z;
+            const localExt=ext/(car.scale.z||1);
+            const a0=-0.95,b0=0.35,band=b0-a0,center=(a0+b0)/2;
+            if(!window.afStruct){
+              const root=new THREE.Group();scene.add(root);
+              const data={root,front:null,center:null,rear:null,bodyMats:[],interiorMats:[]};
+              function makeSegment(kind){
+                const c=car.clone(true);
+                c.position.copy(car.position);c.scale.copy(car.scale);
+                const mats=[];
+                c.traverse(o=>{
+                  if(!o.isMesh)return;
+                  const n=(o.name+' '+(o.material?.name||'')).toLowerCase();
+                  if(isWheel(n)){o.visible=false;return;}
+                  const list=Array.isArray(o.material)?o.material.map(m=>m.clone()):[o.material.clone()];
+                  o.material=Array.isArray(o.material)?list:list[0];
+                  list.forEach(m=>{m.clippingPlanes=[];m.clipIntersection=false;m.needsUpdate=true;mats.push(m);if(isBody(n))data.bodyMats.push(m);if(isInterior(n))data.interiorMats.push(m)});
+                });
+                c.userData.afMats=mats;
+                root.add(c);return c;
               }
-              pos.needsUpdate=true;
-              o.geometry.computeVertexNormals();
-              o.geometry.computeBoundingBox();
-              o.geometry.computeBoundingSphere();
+              data.front=makeSegment('front');data.center=makeSegment('center');data.rear=makeSegment('rear');
+              car.traverse(o=>{if(o.isMesh){const n=(o.name+' '+(o.material?.name||'')).toLowerCase();if(!isWheel(n))o.visible=false;}});
+              window.afStruct=data;
             }
-            for(const [o,b] of wheelBase){
-              o.position.copy(b.p);
-              o.scale.copy(b.s);
-              o.position.x*=wf;
-              const z=b.p.z;
-              if(ext!==0) o.position.z=z>0?z+ext/2:z-ext/2;
+            const A=window.afStruct;
+            const baseScale=car.scale.clone();
+            const f=1+localExt/band;
+            const worldMin=car.position.z+a0*car.scale.z-localExt*car.scale.z/2;
+            const worldMax=car.position.z+b0*car.scale.z+localExt*car.scale.z/2;
+            const rearCut=new THREE.Plane(new THREE.Vector3(0,0,1),-worldMin);
+            const frontCut=new THREE.Plane(new THREE.Vector3(0,0,-1),worldMax);
+            const centerPlanes=[new THREE.Plane(new THREE.Vector3(0,0,1),-worldMax),new THREE.Plane(new THREE.Vector3(0,0,-1),worldMin)];
+            function planesFor(kind){if(kind==='front')return [frontCut];if(kind==='rear')return [rearCut];return centerPlanes}
+            for(const kind of ['front','center','rear']){
+              const c=A[kind];
+              c.position.copy(car.position);
+              c.scale.copy(baseScale);
+              if(kind==='front')c.position.z+=ext/2;
+              if(kind==='rear')c.position.z-=ext/2;
+              if(kind==='center'){
+                c.scale.z=baseScale.z*f;
+                c.position.z=car.position.z+center*baseScale.z*(1-f);
+              }
+              c.traverse(o=>{if(o.isMesh){const pp=planesFor(kind);const list=Array.isArray(o.material)?o.material:[o.material];list.forEach(m=>m.clippingPlanes=pp)}});
             }
+            for(const [o,b] of wheelBase){o.position.copy(b.p);o.scale.copy(b.s);if(Math.abs(localExt)>0.0001)o.position.z=b.p.z>0?b.p.z+localExt/2:b.p.z-localExt/2;}
             car.updateMatrixWorld(true);
           }'''
-          s=s[:start]+new+s[end:]
-          s=s.replace("function isWheel(n){return /wheel|tire|tyre|rim|brake/.test(n)}","function isWheel(n){return !/steering/.test(n)&&/(?:wheel|tire|tyre|rim|brake)/.test(n)}")
-          s=s.replace("const BASE={L:4.78,W:1.88,H:1.32}","const BASE={L:4.50,W:2.02,H:1.33}")
-          s=s.replace('value="4.78"','value="4.50"').replace('4.78 m','4.50 m')
-          s=s.replace('value="1.88"','value="2.02"').replace('1.88 m','2.02 m')
-          s=s.replace('value="1.32"','value="1.33"').replace('1.32 m','1.33 m')
+          s=s[:start]+newdeform+s[end:]
+          s=s.replace("window.paint=h=>bodyM.forEach(m=>m.color?.setHex(h));", "window.paint=h=>{bodyM.forEach(m=>m.color?.setHex(h));window.afStruct?.bodyMats?.forEach(m=>m.color?.setHex(h))};")
+          s=s.replace("window.rough=x=>bodyM.forEach(m=>m.roughness=x);", "window.rough=x=>{bodyM.forEach(m=>m.roughness=x);window.afStruct?.bodyMats?.forEach(m=>m.roughness=x)};")
+          s=s.replace("window.interiorColor=h=>interiorM.forEach(m=>m.color?.setHex(h));", "window.interiorColor=h=>{interiorM.forEach(m=>m.color?.setHex(h));window.afStruct?.interiorMats?.forEach(m=>m.color?.setHex(h))};")
           p.write_text(s)
           PY
       - name: Upload artifact
