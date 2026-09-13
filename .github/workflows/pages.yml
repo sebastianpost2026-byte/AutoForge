@@ -1,12 +1,15 @@
 name: Deploy AutoForge to GitHub Pages
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 jobs:
   deploy:
     environment:
@@ -23,8 +26,9 @@ jobs:
       - name: Prepare Mustang GT model
         run: |
           mkdir -p models
-          curl -L --fail --retry 3 "https://cdn.jsdelivr.net/gh/nesdesignco/FormDrive@7f46b7315526b6a15d92816030502b8464df3dca/public/models/mustang-2005.glb" -o models/mustang-2005.glb
+          curl -L --fail --retry 3 "https://raw.githubusercontent.com/nesdesignco/FormDrive/7f46b7315526b6a15d92816030502b8464df3dca/public/models/mustang-2005.glb" -o models/mustang-2005.glb
           sed -i 's#https://raw.githubusercontent.com/nesdesignco/FormDrive/main/public/models/mustang-2005.glb#models/mustang-2005.glb#g' index.html
+          test -s models/mustang-2005.glb
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
